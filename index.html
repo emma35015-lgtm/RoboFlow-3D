@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RoboFlow - Juego de Optimización Industrial</title>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js" rel="stylesheet">
+    
+    <!-- Three.js -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.min.js"></script>
+    
+    <!-- Cannon.js Physics -->
+    <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
+    
+    <link rel="stylesheet" href="styles.css">
+    
+    <script>
+        // Verificar dependencias antes de cargar la aplicación
+        function checkDependencies() {
+            console.log('🔍 Verificando dependencias...');
+            
+            if (typeof THREE === 'undefined') {
+                console.error('❌ Three.js no está disponible');
+                document.body.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100vh;background:#05080D;color:#E2E8F0;font-family:Poppins;"><h1>Error: Three.js no está disponible. Por favor, verifica tu conexión a internet y recarga la página.</h1></div>';
+                return false;
+            }
+            
+            if (typeof CANNON === 'undefined') {
+                console.error('❌ Cannon.js no está disponible');
+                document.body.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100vh;background:#05080D;color:#E2E8F0;font-family:Poppins;"><h1>Error: Cannon.js no está disponible. Por favor, verifica tu conexión a internet y recarga la página.</h1></div>';
+                return false;
+            }
+            
+            console.log('✅ Dependencias verificadas');
+            return true;
+        }
+    </script>
+</head>
+<body>
+    <!-- Pantalla de Inicio del Juego -->
+    <div class="game-start-screen" id="gameStartScreen">
+        <div class="start-content">
+            <div class="game-logo">
+                <h1 class="logo-text">RoboFlow</h1>
+                <p class="logo-subtitle">Optimiza tu línea de producción industrial</p>
+            </div>
+            
+            <div class="game-instructions">
+                <h2>¿Cómo Jugar?</h2>
+                <div class="instruction-cards">
+                    <div class="instruction-card">
+                        <div class="card-icon">🤖</div>
+                        <h3>Coloca Robots</h3>
+                        <p>Arrastra robots desde el panel lateral a la cuadrícula de producción</p>
+                    </div>
+                    <div class="instruction-card">
+                        <div class="card-icon">🎯</div>
+                        <h3>Cumple Objetivos</h3>
+                        <p>Mueve X productos desde el punto de inicio hasta el punto final en tiempo limitado</p>
+                    </div>
+                    <div class="instruction-card">
+                        <div class="card-icon">⚡</div>
+                        <h3>Evita Colisiones</h3>
+                        <p>Las colisiones reducen tu puntuación y pueden dañar los productos</p>
+                    </div>
+                    <div class="instruction-card">
+                        <div class="card-icon">🏆</div>
+                        <h3>Optimiza Rutas</h3>
+                        <p>Encuentra la configuración más eficiente para maximizar puntos</p>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="start-game-btn" id="startGameBtn">
+                <span>Iniciar Juego</span>
+                <div class="btn-glow"></div>
+            </button>
+        </div>
+    </div>
+    
+    <!-- HUD Superior -->
+    <div class="game-hud" id="gameHud">
+        <div class="hud-section">
+            <div class="hud-item">
+                <span class="hud-label">Nivel</span>
+                <span class="hud-value" id="currentLevel">1</span>
+            </div>
+            <div class="hud-item">
+                <span class="hud-label">Puntuación</span>
+                <span class="hud-value" id="currentScore">0</span>
+            </div>
+        </div>
+        
+        <div class="hud-section">
+            <div class="hud-objectives">
+                <div class="objective-item">
+                    <i data-lucide="package" class="objective-icon"></i>
+                    <span class="objective-text">Productos: <span id="productsCompleted">0</span>/<span id="productsTarget">10</span></span>
+                </div>
+                <div class="objective-item">
+                    <i data-lucide="clock" class="objective-icon"></i>
+                    <span class="objective-text">Sin Colisiones: <span id="collisionLimit">3</span> restantes</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="hud-section">
+            <div class="timer-display">
+                <span class="hud-label">Tiempo</span>
+                <span class="hud-value timer-value" id="gameTimer">03:00</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Canvas 3D Principal -->
+    <canvas id="canvas3d"></canvas>
+    
+    <!-- Panel de Control de Robots (Lateral) -->
+    <div class="robot-panel" id="robotPanel">
+        <div class="panel-header">
+            <h2>Robots Disponibles</h2>
+            <button class="panel-toggle" id="toggleRobotPanel">−</button>
+        </div>
+        
+        <div class="panel-content">
+            <section class="robot-section">
+                <h3>Robots de Transporte</h3>
+                <div class="robot-list" id="transportRobots">
+                    <div class="robot-card" data-robot-type="conveyor" draggable="true">
+                        <div class="robot-icon">🔗</div>
+                        <div class="robot-info">
+                            <h4>Cinta Transportadora</h4>
+                            <p>Mueve productos en línea recta</p>
+                            <div class="robot-stats">
+                                <span class="stat">Velocidad: Media</span>
+                                <span class="stat">Capacidad: 1</span>
+                            </div>
+                        </div>
+                        <div class="robot-cost">100 pts</div>
+                    </div>
+                    
+                    <div class="robot-card" data-robot-type="arm" draggable="true">
+                        <div class="robot-icon">🤖</div>
+                        <div class="robot-info">
+                            <h4>Brazo Robótico</h4>
+                            <p>Preciso para objetos complejos</p>
+                            <div class="robot-stats">
+                                <span class="stat">Velocidad: Alta</span>
+                                <span class="stat">Capacidad: 1</span>
+                            </div>
+                        </div>
+                        <div class="robot-cost">150 pts</div>
+                    </div>
+                    
+                    <div class="robot-card" data-robot-type="forklift" draggable="true">
+                        <div class="robot-icon">🚛</div>
+                        <div class="robot-info">
+                            <h4>Carretilla Elevadora</h4>
+                            <p>Para objetos pesados y voluminosos</p>
+                            <div class="robot-stats">
+                                <span class="stat">Velocidad: Baja</span>
+                                <span class="stat">Capacidad: 3</span>
+                            </div>
+                        </div>
+                        <div class="robot-cost">200 pts</div>
+                    </div>
+                </div>
+            </section>
+            
+            <section class="tool-section">
+                <h3>Herramientas</h3>
+                <div class="tool-buttons">
+                    <button class="tool-btn" id="rotateTool" data-tool="rotate">
+                        <i data-lucide="rotate-ccw" class="tool-icon"></i>
+                        <span>Rotar</span>
+                    </button>
+                    <button class="tool-btn" id="deleteTool" data-tool="delete">
+                        <i data-lucide="trash-2" class="tool-icon"></i>
+                        <span>Eliminar</span>
+                    </button>
+                    <button class="tool-btn" id="gridTool" data-tool="grid">
+                        <i data-lucide="grid-3x3" class="tool-icon"></i>
+                        <span>Mostrar Cuadrícula</span>
+                    </button>
+                </div>
+            </section>
+        </div>
+    </div>
+    
+    <!-- Panel de Gameplay (Inferior) -->
+    <div class="gameplay-panel" id="gameplayPanel">
+        <div class="panel-content">
+            <div class="gameplay-controls">
+                <button class="control-btn primary" id="playBtn">
+                    <i data-lucide="play" class="btn-icon"></i>
+                    <span>Iniciar Nivel</span>
+                </button>
+                <button class="control-btn secondary" id="pauseBtn">
+                    <i data-lucide="pause" class="btn-icon"></i>
+                    <span>Pausar</span>
+                </button>
+                <button class="control-btn secondary" id="resetBtn">
+                    <i data-lucide="rotate-ccw" class="btn-icon"></i>
+                    <span>Reiniciar</span>
+                </button>
+                <button class="control-btn secondary" id="nextLevelBtn" style="display: none;">
+                    <i data-lucide="arrow-right" class="btn-icon"></i>
+                    <span>Siguiente Nivel</span>
+                </button>
+            </div>
+            
+            <div class="gameplay-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Productos Entregados</span>
+                    <span class="stat-value" id="deliveredCount">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Colisiones</span>
+                    <span class="stat-value" id="collisionCount">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Eficiencia</span>
+                    <span class="stat-value" id="efficiencyScore">0%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal de Nivel Completado -->
+    <div class="level-complete-modal" id="levelCompleteModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>¡Nivel Completado!</h2>
+                <div class="completion-icon">🎉</div>
+            </div>
+            
+            <div class="modal-stats">
+                <div class="stat-row">
+                    <span>Puntuación:</span>
+                    <span class="stat-value" id="finalScore">0</span>
+                </div>
+                <div class="stat-row">
+                    <span>Tiempo Restante:</span>
+                    <span class="stat-value" id="timeBonus">+0</span>
+                </div>
+                <div class="stat-row">
+                    <span>Sin Colisiones:</span>
+                    <span class="stat-value" id="collisionBonus">+0</span>
+                </div>
+                <div class="stat-row">
+                    <span>Eficiencia:</span>
+                    <span class="stat-value" id="efficiencyBonus">+0</span>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="action-btn primary" id="nextLevelFromModal">
+                    Siguiente Nivel
+                </button>
+                <button class="action-btn secondary" id="retryLevelFromModal">
+                    Reintentar
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal de Game Over -->
+    <div class="game-over-modal" id="gameOverModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>¡Juego Terminado!</h2>
+                <div class="completion-icon">💥</div>
+            </div>
+            
+            <div class="modal-message">
+                <p id="gameOverReason">Se acabó el tiempo o hubo demasiadas colisiones</p>
+            </div>
+            
+            <div class="modal-stats">
+                <div class="stat-row">
+                    <span>Nivel Alcanzado:</span>
+                    <span class="stat-value" id="reachedLevel">1</span>
+                </div>
+                <div class="stat-row">
+                    <span>Puntuación Final:</span>
+                    <span class="stat-value" id="finalGameScore">0</span>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="action-btn primary" id="restartGameBtn">
+                    Nuevo Juego
+                </button>
+                <button class="action-btn secondary" id="exitToMenuBtn">
+                    Menú Principal
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Efectos de Partículas -->
+    <div class="particles-container" id="particlesContainer"></div>
+    
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loadingScreen" style="display: none;">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h2>Cargando RoboFlow</h2>
+            <p>Inicializando motor de física...</p>
+        </div>
+    </div>
+    
+    <script>
+        // Inicializar cuando las dependencias estén listas
+        document.addEventListener('DOMContentLoaded', function() {
+            if (checkDependencies()) {
+                console.log('🚀 Iniciando RoboFlow...');
+                // Cargar el script principal después de verificar dependencias
+                const script = document.createElement('script');
+                script.src = 'script.js';
+                document.head.appendChild(script);
+                
+                // Inicializar iconos de Lucide
+                lucide.createIcons();
+            }
+        });
+    </script>
+</body>
+</html>
